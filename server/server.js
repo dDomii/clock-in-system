@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import { initializeDatabase } from './database.js';
 import { loginUser, verifyToken, createUser, updateUser } from './auth.js';
 import { clockIn, clockOut, getTodayEntry, getOvertimeRequests, approveOvertime } from './timeTracking.js';
-import { generateWeeklyPayslips, getPayrollReport } from './payroll.js';
+import { generateWeeklyPayslips, getPayrollReport, updatePayrollEntry } from './payroll.js';
 import { pool } from './database.js';
 
 // Load environment variables
@@ -167,16 +167,6 @@ app.post('/api/payslips/generate', authenticate, async (req, res) => {
   const { weekStart } = req.body;
   
   try {
-    // Check if payslips already exist for this week for ANY user
-    const [existing] = await pool.execute(
-      'SELECT COUNT(*) as count FROM payslips WHERE week_start = ?',
-      [weekStart]
-    );
-
-    if (existing[0].count > 0) {
-      return res.json({ error: 'Payslips for this week have already been generated. Only one payroll per user per week is allowed.' });
-    }
-
     const payslips = await generateWeeklyPayslips(weekStart);
     res.json(payslips);
   } catch (error) {
@@ -193,6 +183,15 @@ app.get('/api/payroll-report', authenticate, async (req, res) => {
   const { weekStart } = req.query;
   const report = await getPayrollReport(weekStart);
   res.json(report);
+});
+
+app.put('/api/payroll/:id', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+
+  const result = await updatePayrollEntry(req.params.id, req.body);
+  res.json(result);
 });
 
 app.get('/api/active-users', authenticate, async (req, res) => {

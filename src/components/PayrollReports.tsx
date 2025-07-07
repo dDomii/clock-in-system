@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Download, Calendar, DollarSign, FileText, AlertCircle } from 'lucide-react';
+import { Download, Calendar, DollarSign, FileText, AlertCircle, Edit2, Save, X } from 'lucide-react';
 
 interface PayrollEntry {
   id: number;
@@ -36,6 +36,8 @@ export function PayrollReports() {
   const [weekStart, setWeekStart] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [editingEntry, setEditingEntry] = useState<number | null>(null);
+  const [editData, setEditData] = useState<Partial<PayrollEntry>>({});
   const { token } = useAuth();
 
   useEffect(() => {
@@ -96,6 +98,60 @@ export function PayrollReports() {
     } catch (error) {
       console.error('Error fetching payroll report:', error);
     }
+  };
+
+  const handleEdit = (entry: PayrollEntry) => {
+    setEditingEntry(entry.id);
+    setEditData({
+      clock_in_time: entry.clock_in_time ? new Date(entry.clock_in_time).toISOString().slice(0, 16) : '',
+      clock_out_time: entry.clock_out_time ? new Date(entry.clock_out_time).toISOString().slice(0, 16) : '',
+      total_hours: entry.total_hours,
+      overtime_hours: entry.overtime_hours,
+      undertime_hours: entry.undertime_hours,
+      base_salary: entry.base_salary,
+      overtime_pay: entry.overtime_pay,
+      undertime_deduction: entry.undertime_deduction,
+      staff_house_deduction: entry.staff_house_deduction
+    });
+  };
+
+  const handleSave = async (entryId: number) => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/payroll/${entryId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          clockIn: editData.clock_in_time,
+          clockOut: editData.clock_out_time,
+          totalHours: editData.total_hours,
+          overtimeHours: editData.overtime_hours,
+          undertimeHours: editData.undertime_hours,
+          baseSalary: editData.base_salary,
+          overtimePay: editData.overtime_pay,
+          undertimeDeduction: editData.undertime_deduction,
+          staffHouseDeduction: editData.staff_house_deduction
+        }),
+      });
+
+      if (response.ok) {
+        setEditingEntry(null);
+        setEditData({});
+        fetchPayrollReport();
+      } else {
+        alert('Failed to update payroll entry');
+      }
+    } catch (error) {
+      console.error('Error updating payroll entry:', error);
+      alert('Failed to update payroll entry');
+    }
+  };
+
+  const handleCancel = () => {
+    setEditingEntry(null);
+    setEditData({});
   };
 
   const exportToCSV = () => {
@@ -180,6 +236,11 @@ export function PayrollReports() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  const formatDateTime = (timeString: string) => {
+    if (!timeString) return '';
+    return new Date(timeString).toISOString().slice(0, 16);
   };
 
   const totalSalary = payrollData.reduce((sum, entry) => sum + entry.total_salary, 0);
@@ -309,6 +370,7 @@ export function PayrollReports() {
                         <th className="text-right py-3 px-4 font-semibold text-gray-700">Overtime Pay</th>
                         <th className="text-right py-3 px-4 font-semibold text-gray-700">Deductions</th>
                         <th className="text-right py-3 px-4 font-semibold text-gray-700">Total</th>
+                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -323,35 +385,158 @@ export function PayrollReports() {
                             </div>
                           </td>
                           <td className="py-3 px-4">
-                            <div className="text-sm">
-                              <p className="text-gray-900">In: {formatTime(entry.clock_in_time)}</p>
-                              <p className="text-gray-600">Out: {formatTime(entry.clock_out_time)}</p>
-                            </div>
+                            {editingEntry === entry.id ? (
+                              <div className="space-y-2">
+                                <input
+                                  type="datetime-local"
+                                  value={editData.clock_in_time || ''}
+                                  onChange={(e) => setEditData({ ...editData, clock_in_time: e.target.value })}
+                                  className="w-full text-xs px-2 py-1 border border-gray-300 rounded"
+                                />
+                                <input
+                                  type="datetime-local"
+                                  value={editData.clock_out_time || ''}
+                                  onChange={(e) => setEditData({ ...editData, clock_out_time: e.target.value })}
+                                  className="w-full text-xs px-2 py-1 border border-gray-300 rounded"
+                                />
+                              </div>
+                            ) : (
+                              <div className="text-sm">
+                                <p className="text-gray-900">In: {formatTime(entry.clock_in_time)}</p>
+                                <p className="text-gray-600">Out: {formatTime(entry.clock_out_time)}</p>
+                              </div>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            <div>
-                              <p className="text-gray-900">{entry.total_hours}h</p>
-                              {entry.undertime_hours > 0 && (
-                                <p className="text-sm text-red-600">-{entry.undertime_hours}h</p>
-                              )}
-                            </div>
+                            {editingEntry === entry.id ? (
+                              <div className="space-y-1">
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={editData.total_hours || 0}
+                                  onChange={(e) => setEditData({ ...editData, total_hours: parseFloat(e.target.value) || 0 })}
+                                  className="w-16 text-xs px-1 py-1 border border-gray-300 rounded text-right"
+                                />
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={editData.undertime_hours || 0}
+                                  onChange={(e) => setEditData({ ...editData, undertime_hours: parseFloat(e.target.value) || 0 })}
+                                  className="w-16 text-xs px-1 py-1 border border-gray-300 rounded text-right"
+                                />
+                              </div>
+                            ) : (
+                              <div>
+                                <p className="text-gray-900">{entry.total_hours}h</p>
+                                {entry.undertime_hours > 0 && (
+                                  <p className="text-sm text-red-600">-{entry.undertime_hours}h</p>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-right text-orange-600">
-                            {entry.overtime_hours > 0 ? `${entry.overtime_hours}h` : '-'}
+                            {editingEntry === entry.id ? (
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={editData.overtime_hours || 0}
+                                onChange={(e) => setEditData({ ...editData, overtime_hours: parseFloat(e.target.value) || 0 })}
+                                className="w-16 text-xs px-1 py-1 border border-gray-300 rounded text-right"
+                              />
+                            ) : (
+                              entry.overtime_hours > 0 ? `${entry.overtime_hours}h` : '-'
+                            )}
                           </td>
                           <td className="py-3 px-4 text-right text-gray-900">
-                            {formatCurrency(entry.base_salary)}
+                            {editingEntry === entry.id ? (
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editData.base_salary || 0}
+                                onChange={(e) => setEditData({ ...editData, base_salary: parseFloat(e.target.value) || 0 })}
+                                className="w-20 text-xs px-1 py-1 border border-gray-300 rounded text-right"
+                              />
+                            ) : (
+                              formatCurrency(entry.base_salary)
+                            )}
                           </td>
                           <td className="py-3 px-4 text-right text-green-600">
-                            {entry.overtime_pay > 0 ? formatCurrency(entry.overtime_pay) : '-'}
+                            {editingEntry === entry.id ? (
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editData.overtime_pay || 0}
+                                onChange={(e) => setEditData({ ...editData, overtime_pay: parseFloat(e.target.value) || 0 })}
+                                className="w-20 text-xs px-1 py-1 border border-gray-300 rounded text-right"
+                              />
+                            ) : (
+                              entry.overtime_pay > 0 ? formatCurrency(entry.overtime_pay) : '-'
+                            )}
                           </td>
                           <td className="py-3 px-4 text-right text-red-600">
-                            {(entry.undertime_deduction + entry.staff_house_deduction) > 0 
-                              ? formatCurrency(entry.undertime_deduction + entry.staff_house_deduction) 
-                              : '-'}
+                            {editingEntry === entry.id ? (
+                              <div className="space-y-1">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={editData.undertime_deduction || 0}
+                                  onChange={(e) => setEditData({ ...editData, undertime_deduction: parseFloat(e.target.value) || 0 })}
+                                  className="w-20 text-xs px-1 py-1 border border-gray-300 rounded text-right"
+                                />
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={editData.staff_house_deduction || 0}
+                                  onChange={(e) => setEditData({ ...editData, staff_house_deduction: parseFloat(e.target.value) || 0 })}
+                                  className="w-20 text-xs px-1 py-1 border border-gray-300 rounded text-right"
+                                />
+                              </div>
+                            ) : (
+                              (entry.undertime_deduction + entry.staff_house_deduction) > 0 
+                                ? formatCurrency(entry.undertime_deduction + entry.staff_house_deduction) 
+                                : '-'
+                            )}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            <p className="font-bold text-gray-900">{formatCurrency(entry.total_salary)}</p>
+                            <p className="font-bold text-gray-900">
+                              {editingEntry === entry.id 
+                                ? formatCurrency(
+                                    (editData.base_salary || 0) + 
+                                    (editData.overtime_pay || 0) - 
+                                    (editData.undertime_deduction || 0) - 
+                                    (editData.staff_house_deduction || 0)
+                                  )
+                                : formatCurrency(entry.total_salary)
+                              }
+                            </p>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {editingEntry === entry.id ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => handleSave(entry.id)}
+                                  className="text-green-600 hover:text-green-800 p-1 rounded transition-colors"
+                                  title="Save"
+                                >
+                                  <Save className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={handleCancel}
+                                  className="text-red-600 hover:text-red-800 p-1 rounded transition-colors"
+                                  title="Cancel"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleEdit(entry)}
+                                className="text-blue-600 hover:text-blue-800 p-1 rounded transition-colors"
+                                title="Edit"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
